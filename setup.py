@@ -1,4 +1,4 @@
-# Copyright 2017-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2017-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"). You
 # may not use this file except in compliance with the License. A copy of
@@ -10,6 +10,7 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+"""Placeholder docstring"""
 from __future__ import absolute_import
 
 import os
@@ -20,6 +21,10 @@ from setuptools import setup, find_packages
 
 
 def read(fname):
+    """
+    Args:
+        fname:
+    """
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 
@@ -29,7 +34,7 @@ def read_version():
 
 # Declare minimal set for installation
 required_packages = [
-    "boto3>=1.9.169",
+    "boto3>=1.9.213",
     "numpy>=1.9.0",
     "protobuf>=3.1",
     "scipy>=0.19.0",
@@ -37,6 +42,7 @@ required_packages = [
     "protobuf3-to-dict>=0.1.5",
     "docker-compose>=1.23.0",
     "requests>=2.20.0, <2.21",
+    "fabric>=2.0",
 ]
 
 # enum is introduced in Python 3.4. Installing enum back port

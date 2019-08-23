@@ -1,4 +1,4 @@
-# Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2017-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"). You
 # may not use this file except in compliance with the License. A copy of
@@ -10,24 +10,33 @@
 # distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
+"""Placeholder docstring"""
 from __future__ import absolute_import
 
 from abc import abstractmethod
 from six import string_types
 
+from sagemaker.inputs import FileSystemInput
 from sagemaker.local import file_input
 from sagemaker.session import s3_input
 
 
 class _Job(object):
-    """Handle creating, starting and waiting for Amazon SageMaker jobs to finish.
+    """Handle creating, starting and waiting for Amazon SageMaker jobs to
+    finish.
 
     This class shouldn't be directly instantiated.
 
-    Subclasses must define a way to create, start and wait for an Amazon SageMaker job.
+    Subclasses must define a way to create, start and wait for an Amazon
+    SageMaker job.
     """
 
     def __init__(self, sagemaker_session, job_name):
+        """
+        Args:
+            sagemaker_session:
+            job_name:
+        """
         self.sagemaker_session = sagemaker_session
         self.job_name = job_name
 
@@ -36,20 +45,29 @@ class _Job(object):
         """Create a new Amazon SageMaker job from the estimator.
 
         Args:
-            estimator (sagemaker.estimator.EstimatorBase): Estimator object created by the user.
-            inputs (str): Parameters used when called  :meth:`~sagemaker.estimator.EstimatorBase.fit`.
+            estimator (sagemaker.estimator.EstimatorBase): Estimator object
+                created by the user.
+            inputs (str): Parameters used when called
+                :meth:`~sagemaker.estimator.EstimatorBase.fit`.
 
         Returns:
-            sagemaker.job: Constructed object that captures all information about the started job.
+            sagemaker.job: Constructed object that captures all information
+            about the started job.
         """
 
     @abstractmethod
     def wait(self):
-        """Wait for the Amazon SageMaker job to finish.
-        """
+        """Wait for the Amazon SageMaker job to finish."""
 
     @staticmethod
     def _load_config(inputs, estimator, expand_role=True, validate_uri=True):
+        """
+        Args:
+            inputs:
+            estimator:
+            expand_role:
+            validate_uri:
+        """
         input_config = _Job._format_inputs_to_input_config(inputs, validate_uri)
         role = (
             estimator.sagemaker_session.expand_role(estimator.role)
@@ -63,7 +81,9 @@ class _Job(object):
             estimator.train_volume_size,
             estimator.train_volume_kms_key,
         )
-        stop_condition = _Job._prepare_stop_condition(estimator.train_max_run)
+        stop_condition = _Job._prepare_stop_condition(
+            estimator.train_max_run, estimator.train_max_wait
+        )
         vpc_config = estimator.get_vpc_config()
 
         model_channel = _Job._prepare_channel(
@@ -98,13 +118,19 @@ class _Job(object):
 
     @staticmethod
     def _format_inputs_to_input_config(inputs, validate_uri=True):
+        """
+        Args:
+            inputs:
+            validate_uri:
+        """
         if inputs is None:
             return None
 
         # Deferred import due to circular dependency
         from sagemaker.amazon.amazon_estimator import RecordSet
+        from sagemaker.amazon.amazon_estimator import FileSystemRecordSet
 
-        if isinstance(inputs, RecordSet):
+        if isinstance(inputs, (RecordSet, FileSystemRecordSet)):
             inputs = inputs.data_channel()
 
         input_dict = {}
@@ -119,10 +145,11 @@ class _Job(object):
                 input_dict[k] = _Job._format_string_uri_input(v, validate_uri)
         elif isinstance(inputs, list):
             input_dict = _Job._format_record_set_list_input(inputs)
+        elif isinstance(inputs, FileSystemInput):
+            input_dict["training"] = inputs
         else:
-            raise ValueError(
-                "Cannot format input {}. Expecting one of str, dict or s3_input".format(inputs)
-            )
+            msg = "Cannot format input {}. Expecting one of str, dict, s3_input or FileSystemInput"
+            raise ValueError(msg.format(inputs))
 
         channels = [
             _Job._convert_input_to_channel(name, input) for name, input in input_dict.items()
@@ -132,12 +159,24 @@ class _Job(object):
 
     @staticmethod
     def _convert_input_to_channel(channel_name, channel_s3_input):
+        """
+        Args:
+            channel_name:
+            channel_s3_input:
+        """
         channel_config = channel_s3_input.config.copy()
         channel_config["ChannelName"] = channel_name
         return channel_config
 
     @staticmethod
     def _format_string_uri_input(uri_input, validate_uri=True, content_type=None, input_mode=None):
+        """
+        Args:
+            uri_input:
+            validate_uri:
+            content_type:
+            input_mode:
+        """
         if isinstance(uri_input, str) and validate_uri and uri_input.startswith("s3://"):
             return s3_input(uri_input, content_type=content_type, input_mode=input_mode)
         if isinstance(uri_input, str) and validate_uri and uri_input.startswith("file://"):
@@ -149,14 +188,12 @@ class _Job(object):
             )
         if isinstance(uri_input, str):
             return s3_input(uri_input, content_type=content_type, input_mode=input_mode)
-        if isinstance(uri_input, s3_input):
+        if isinstance(uri_input, (s3_input, file_input, FileSystemInput)):
             return uri_input
-        if isinstance(uri_input, file_input):
-            return uri_input
+
         raise ValueError(
-            "Cannot format input {}. Expecting one of str, s3_input, or file_input".format(
-                uri_input
-            )
+            "Cannot format input {}. Expecting one of str, s3_input, file_input or "
+            "FileSystemInput".format(uri_input)
         )
 
     @staticmethod
@@ -168,6 +205,15 @@ class _Job(object):
         content_type=None,
         input_mode=None,
     ):
+        """
+        Args:
+            input_config:
+            channel_uri:
+            channel_name:
+            validate_uri:
+            content_type:
+            input_mode:
+        """
         if not channel_uri:
             return None
         if not channel_name:
@@ -189,6 +235,11 @@ class _Job(object):
 
     @staticmethod
     def _format_model_uri_input(model_uri, validate_uri=True):
+        """
+        Args:
+            model_uri:
+            validate_uri:
+        """
         if isinstance(model_uri, string_types) and validate_uri and model_uri.startswith("s3://"):
             return s3_input(
                 model_uri,
@@ -213,23 +264,34 @@ class _Job(object):
 
     @staticmethod
     def _format_record_set_list_input(inputs):
+        """
+        Args:
+            inputs:
+        """
         # Deferred import due to circular dependency
-        from sagemaker.amazon.amazon_estimator import RecordSet
+        from sagemaker.amazon.amazon_estimator import FileSystemRecordSet, RecordSet
 
         input_dict = {}
         for record in inputs:
-            if not isinstance(record, RecordSet):
-                raise ValueError("List compatible only with RecordSets.")
+            if not isinstance(record, (RecordSet, FileSystemRecordSet)):
+                raise ValueError("List compatible only with RecordSets or FileSystemRecordSets.")
 
             if record.channel in input_dict:
                 raise ValueError("Duplicate channels not allowed.")
-
-            input_dict[record.channel] = record.records_s3_input()
+            if isinstance(record, RecordSet):
+                input_dict[record.channel] = record.records_s3_input()
+            if isinstance(record, FileSystemRecordSet):
+                input_dict[record.channel] = record.file_system_input
 
         return input_dict
 
     @staticmethod
     def _prepare_output_config(s3_path, kms_key_id):
+        """
+        Args:
+            s3_path:
+            kms_key_id:
+        """
         config = {"S3OutputPath": s3_path}
         if kms_key_id is not None:
             config["KmsKeyId"] = kms_key_id
@@ -237,6 +299,13 @@ class _Job(object):
 
     @staticmethod
     def _prepare_resource_config(instance_count, instance_type, volume_size, train_volume_kms_key):
+        """
+        Args:
+            instance_count:
+            instance_type:
+            volume_size:
+            train_volume_kms_key:
+        """
         resource_config = {
             "InstanceCount": instance_count,
             "InstanceType": instance_type,
@@ -248,9 +317,17 @@ class _Job(object):
         return resource_config
 
     @staticmethod
-    def _prepare_stop_condition(max_run):
+    def _prepare_stop_condition(max_run, max_wait):
+        """
+        Args:
+            max_run:
+            max_wait:
+        """
+        if max_wait:
+            return {"MaxRuntimeInSeconds": max_run, "MaxWaitTimeInSeconds": max_wait}
         return {"MaxRuntimeInSeconds": max_run}
 
     @property
     def name(self):
+        """Placeholder docstring"""
         return self.job_name

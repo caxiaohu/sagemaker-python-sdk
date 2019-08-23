@@ -1,4 +1,4 @@
-# Copyright 2017-2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# Copyright 2017-2019 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"). You
 # may not use this file except in compliance with the License. A copy of
@@ -112,8 +112,10 @@ class DummyFramework(Framework):
     def train_image(self):
         return IMAGE_NAME
 
-    def create_model(self, role=None, model_server_workers=None):
-        return DummyFrameworkModel(self.sagemaker_session, vpc_config=self.get_vpc_config())
+    def create_model(self, role=None, model_server_workers=None, entry_point=None):
+        return DummyFrameworkModel(
+            self.sagemaker_session, vpc_config=self.get_vpc_config(), entry_point=entry_point
+        )
 
     @classmethod
     def _prepare_init_params_from_job_description(cls, job_details, model_channel_name=None):
@@ -125,13 +127,13 @@ class DummyFramework(Framework):
 
 
 class DummyFrameworkModel(FrameworkModel):
-    def __init__(self, sagemaker_session, **kwargs):
+    def __init__(self, sagemaker_session, entry_point=None, **kwargs):
         super(DummyFrameworkModel, self).__init__(
             MODEL_DATA,
             MODEL_IMAGE,
             INSTANCE_TYPE,
             ROLE,
-            ENTRY_POINT,
+            entry_point or ENTRY_POINT,
             sagemaker_session=sagemaker_session,
             **kwargs
         )
@@ -222,6 +224,69 @@ def test_framework_all_init_args(sagemaker_session):
         },
         "metric_definitions": [{"Name": "validation-rmse", "Regex": "validation-rmse=(\\d+)"}],
         "encrypt_inter_container_traffic": True,
+    }
+
+
+def test_framework_with_spot_and_checkpoints(sagemaker_session):
+    f = DummyFramework(
+        "my_script.py",
+        role="DummyRole",
+        train_instance_count=3,
+        train_instance_type="ml.m4.xlarge",
+        sagemaker_session=sagemaker_session,
+        train_volume_size=123,
+        train_volume_kms_key="volumekms",
+        train_max_run=456,
+        input_mode="inputmode",
+        output_path="outputpath",
+        output_kms_key="outputkms",
+        base_job_name="basejobname",
+        tags=[{"foo": "bar"}],
+        subnets=["123", "456"],
+        security_group_ids=["789", "012"],
+        metric_definitions=[{"Name": "validation-rmse", "Regex": "validation-rmse=(\\d+)"}],
+        encrypt_inter_container_traffic=True,
+        train_use_spot_instances=True,
+        train_max_wait=500,
+        checkpoint_s3_uri="s3://mybucket/checkpoints/",
+        checkpoint_local_path="/tmp/checkpoints",
+    )
+    _TrainingJob.start_new(f, "s3://mydata")
+    sagemaker_session.train.assert_called_once()
+    _, args = sagemaker_session.train.call_args
+    assert args == {
+        "input_mode": "inputmode",
+        "tags": [{"foo": "bar"}],
+        "hyperparameters": {},
+        "image": "fakeimage",
+        "input_config": [
+            {
+                "ChannelName": "training",
+                "DataSource": {
+                    "S3DataSource": {
+                        "S3DataType": "S3Prefix",
+                        "S3DataDistributionType": "FullyReplicated",
+                        "S3Uri": "s3://mydata",
+                    }
+                },
+            }
+        ],
+        "output_config": {"KmsKeyId": "outputkms", "S3OutputPath": "outputpath"},
+        "vpc_config": {"Subnets": ["123", "456"], "SecurityGroupIds": ["789", "012"]},
+        "stop_condition": {"MaxRuntimeInSeconds": 456, "MaxWaitTimeInSeconds": 500},
+        "role": sagemaker_session.expand_role(),
+        "job_name": None,
+        "resource_config": {
+            "VolumeSizeInGB": 123,
+            "InstanceCount": 3,
+            "VolumeKmsKeyId": "volumekms",
+            "InstanceType": "ml.m4.xlarge",
+        },
+        "metric_definitions": [{"Name": "validation-rmse", "Regex": "validation-rmse=(\\d+)"}],
+        "encrypt_inter_container_traffic": True,
+        "train_use_spot_instances": True,
+        "checkpoint_s3_uri": "s3://mybucket/checkpoints/",
+        "checkpoint_local_path": "/tmp/checkpoints",
     }
 
 

@@ -651,6 +651,9 @@ def test_train_pack_to_request_with_optional_params(sagemaker_session):
         tags=TAGS,
         metric_definitions=METRIC_DEFINITONS,
         encrypt_inter_container_traffic=True,
+        train_use_spot_instances=True,
+        checkpoint_s3_uri="s3://mybucket/checkpoints/",
+        checkpoint_local_path="/tmp/checkpoints",
     )
 
     _, _, actual_train_args = sagemaker_session.sagemaker_client.method_calls[0]
@@ -660,6 +663,9 @@ def test_train_pack_to_request_with_optional_params(sagemaker_session):
     assert actual_train_args["Tags"] == TAGS
     assert actual_train_args["AlgorithmSpecification"]["MetricDefinitions"] == METRIC_DEFINITONS
     assert actual_train_args["EnableInterContainerTrafficEncryption"] is True
+    assert actual_train_args["EnableManagedSpotTraining"] is True
+    assert actual_train_args["CheckpointConfig"]["S3Uri"] == "s3://mybucket/checkpoints/"
+    assert actual_train_args["CheckpointConfig"]["LocalPath"] == "/tmp/checkpoints"
 
 
 def test_transform_pack_to_request(sagemaker_session):
@@ -676,12 +682,15 @@ def test_transform_pack_to_request(sagemaker_session):
 
     resource_config = {"InstanceCount": INSTANCE_COUNT, "InstanceType": INSTANCE_TYPE}
 
+    data_processing = {"OutputFilter": "$", "InputFilter": "$", "JoinSource": "Input"}
+
     expected_args = {
         "TransformJobName": JOB_NAME,
         "ModelName": model_name,
         "TransformInput": in_config,
         "TransformOutput": out_config,
         "TransformResources": resource_config,
+        "DataProcessing": data_processing,
     }
 
     sagemaker_session.transform(
@@ -695,7 +704,7 @@ def test_transform_pack_to_request(sagemaker_session):
         output_config=out_config,
         resource_config=resource_config,
         tags=None,
-        data_processing=None,
+        data_processing=data_processing,
     )
 
     _, _, actual_args = sagemaker_session.sagemaker_client.method_calls[0]
@@ -1171,7 +1180,7 @@ def test_update_endpoint_non_existing_endpoint(sagemaker_session):
         {"Error": {"Code": "ValidationException", "Message": "Could not find entity"}}, "foo"
     )
     expected_error_message = (
-        'Endpoint with name "non-existing-endpoint" does not exist; '
+        "Endpoint with name 'non-existing-endpoint' does not exist; "
         "please use an existing endpoint name"
     )
     sagemaker_session.sagemaker_client.describe_endpoint = Mock(side_effect=error)
